@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PMC Report Generator</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--tx:#1a1d23;--mut:#667085;--bd:#d9dde3;--ac:#c2410c;--acx:#fff;--in:#fff;--warn:#b45309}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14161a;--card:#1e2127;--tx:#eceef2;--mut:#9aa3b2;--bd:#343944;--ac:#f97316;--acx:#14161a;--in:#14161a;--warn:#fbbf24}}
+:root[data-theme="dark"]{--bg:#14161a;--card:#1e2127;--tx:#eceef2;--mut:#9aa3b2;--bd:#343944;--ac:#f97316;--acx:#14161a;--in:#14161a;--warn:#fbbf24}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:880px;margin:0 auto;padding:12px 14px 110px}
+h1{font-size:19px;margin:4px 0 10px}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;padding-bottom:2px}
+.tabs button{white-space:nowrap;flex:1}
+.tabs .on{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600}
+section{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:13px;margin-bottom:11px}
+h2{font-size:14px;margin:0 0 9px;color:var(--ac)}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
+input,select,textarea{width:100%;font:inherit;color:var(--tx);background:var(--in);border:1px solid var(--bd);border-radius:7px;padding:8px}
+textarea{min-height:72px;resize:vertical}
+.req>h2::after,.req>label::after{content:" *";color:var(--warn)}
+.rows{display:flex;flex-direction:column;gap:8px}
+.row{display:grid;gap:6px;align-items:end;padding:8px;border:1px solid var(--bd);border-radius:8px}
+@media(max-width:600px){.row{grid-template-columns:1fr 1fr!important}.row>:first-child{grid-column:1/-1}}
+button{font:inherit;cursor:pointer;border-radius:7px;border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:8px 12px}
+.add{margin-top:8px;border-style:dashed;color:var(--ac)}
+.del{color:var(--warn)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--bd);padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;justify-content:center;z-index:5}
+.go{background:var(--ac);color:var(--acx);border:0;font-weight:600;padding:11px 22px;flex:1;max-width:360px}
+.note{font-size:13px;color:var(--warn);min-height:18px}
+.chip{display:inline-block;background:var(--bg);border:1px solid var(--bd);border-radius:20px;padding:2px 10px;font-size:13px;margin-top:8px}
+#lock{display:none;position:fixed;inset:0;background:var(--bg);align-items:center;justify-content:center;z-index:20;padding:20px}.locked #lock{display:flex}.locked .wrap,.locked .bar{display:none!important}.lk{width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px}
+summary{cursor:pointer;font-weight:600;color:var(--ac);font-size:14px}details[open]>summary{margin-bottom:9px}
+</style>
+</head>
+<body class="locked">
+<div id="lock"><div class="lk"><h1>PMC Report Generator</h1><p style="margin:0;color:var(--mut)">Sign in to continue</p><input id="le" type="email" placeholder="Email" autocomplete="username"><input id="lp" type="password" placeholder="Password" autocomplete="current-password"><button class="go" id="li" style="max-width:none;flex:none">Sign in</button><div class="note" id="lm"></div></div></div>
+<div class="wrap">
+<h1>PMC Report Generator</h1>
+<p style="margin:0 0 10px;color:var(--mut);font-size:13px">1. Pick a report · 2. Fill the open boxes (* = required) · 3. Tap Generate PDF</p>
+<div id="who" style="font-size:13px;color:var(--mut);margin-bottom:8px"></div>
+<div class="tabs" id="tabs"></div>
+<div id="proj"></div>
+<div id="form"></div>
+<div class="note" id="msg"></div>
+</div>
+<div class="bar"><button id="clr">New / clear</button><button id="sv">Save</button><button class="go" id="gen">Generate PDF</button></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script>
+// ===== DATABASE SETTINGS: paste your Supabase values here (leave as is to run offline) =====
+const SUPA_URL="https://ukgaeczqcxnmpyfzaxfg.supabase.co",SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVrZ2FlY3pxY3hubXB5ZnpheGZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMzk3NDMsImV4cCI6MjEwODYxNTc0M30.NGB2ecff_X_-5dVf7mD2c-35LYpSFt3UHDm1oxyUM04";
+// ==========================================================================================
+let DB=null;
+window.addEventListener("error",e=>{const m=document.getElementById("msg");if(m)m.textContent="Error: "+e.message});
+try{if(window.supabase&&!SUPA_URL.startsWith("YOUR"))DB=supabase.createClient(SUPA_URL.trim(),SUPA_KEY.trim())}catch(e){window.DBERR=e.message}
+
+let USER=null,PIN=null;
+const ST=["Not started","In progress","Completed","Delayed"];
+const RPT=[["Daily","Daily Progress Report","DPR"],["Weekly","Weekly Progress Report","WPR"],["Monthly","Monthly Progress Report","MPR"],["NCR","Non-Conformance Report","NCR"]];
+// field: [key,label,type,opts]  table col: same. kinds: kv / area / tb
+const F=(k,l,t,o)=>[k,l,t||"text",o];
+const DET=[{t:"Report details",k:"kv",f:[F("repno","Report no."),F("date","Report date","date")]}];
+const DETP=[{t:"Report details",k:"kv",f:[F("repno","Report no."),F("date","Report date","date"),F("from","Period from","date"),F("to","Period to","date")]}];
+const WORKS={t:"List of works",k:"tb",id:"works",req:1,c:[F("d","Work description"),F("q","Qty / unit"),F("s","Status","sel",ST),F("p","% done","number")]};
+const SCHED={t:"Work schedule",k:"tb",id:"sched",req:1,c:[F("a","Activity"),F("s","Start","date"),F("e","Finish","date"),F("t","Status","sel",ST)]};
+const MAN={t:"Manpower management",k:"tb",id:"man",req:1,tot:1,c:[F("c","Category (mason, helper…)"),F("pl","Planned","number"),F("pr","Present","number"),F("r","Remarks")]};
+const A=(id,t,req)=>({t,k:"area",id,req});
+const LAB=["Mason","Carpenter","Bar Bender","Electrician","Plumber","Helpers","Others"].map(c=>({c}));
+const EQP=["Excavator","Crane","Concrete Mixer","Vibrator","Others"].map(e=>({e}));
+const MAT=[["Cement","Bags"],["Steel","kg/MT"],["Sand","m³"],["Aggregate","m³"],["Concrete (RMC)","m³"]].map(([m,u])=>({m,u}));
+const QC=["Slump Test","Cube Casting","Reinforcement Inspection","Formwork Inspection"].map(i=>({i}));
+const PHS=[["b","Before work"],["d","During work"],["c","Completed work"]];let PH=[{n:""}];
+const ph2=p=>Array.isArray(p)&&p.length?JSON.parse(JSON.stringify(p)):(p&&!Array.isArray(p)&&Object.keys(p).length?[{n:"Photos",...JSON.parse(JSON.stringify(p))}]:[{n:""}]);
+function PHHTML(s){return `<section><h2>${s.t} (not saved after closing the page)</h2><div class="rows">${PH.map((w,i)=>`<div class="row" style="display:block"><div style="display:flex;gap:6px;align-items:end"><div style="flex:1"><label>Work name (e.g. Flooring, Cleaning)</label><input value="${esc(w.n)}" data-pn="${i}"></div><button class="del" data-pdel="${i}" aria-label="Remove work photos">✕</button></div><div class="g" style="margin-top:8px">${PHS.map(([k,l])=>`<div><label>${l}</label><input type="file" accept="image/*" data-ph="${k}" data-i="${i}">${w[k]?`<img src="${w[k].url}" alt="${l}" style="width:100%;margin-top:6px;border-radius:6px">`:""}</div>`).join("")}</div></div>`).join("")}</div><button class="add" data-padd="1">+ Add work photos</button></section>`}
+function PDFPH(s,doc,title){
+ const ws=PH.filter(w=>PHS.some(x=>w[x[0]]));if(!ws.length)return;
+ const bw=58,bh=44;let y0=title(s.t);
+ ws.forEach((w,wi)=>{
+  if(y0+64>285){doc.addPage();y0=16}
+  doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(0);doc.text((wi+1)+") "+(w.n||"Work"),14,y0+4);
+  PHS.forEach((x,i)=>{const im=w[x[0]],xx=14+i*62;if(!im)return;const sc=Math.min(bw/im.w,bh/im.h),iw=im.w*sc,ih=im.h*sc;doc.addImage(im.url,"JPEG",xx+(bw-iw)/2,y0+7+(bh-ih)/2,iw,ih);doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(90);doc.text(x[1],xx+bw/2,y0+bh+11,{align:"center"});doc.setTextColor(0)});
+  y0+=bh+16});
+ doc.lastAutoTable.finalY=y0-10}
+const CFG={
+Daily:[{t:"Report details",k:"kv",f:[F("repno","DPR no."),F("date","Date","date"),F("w","Weather","sel",["Sunny","Cloudy","Rainy","Windy"]),F("temp","Temperature °C","number"),F("wl","Work lost to weather (hrs)","number")]},
+ {t:"Work progress",k:"tb",id:"works",req:1,c:[F("a","Activity"),F("l","Location"),F("pq","Planned qty"),F("eq","Executed qty"),F("p","% complete","number"),F("r","Remarks")]},
+ {t:"Labour deployment",k:"tb",id:"man",tot:1,calc:1,pre:LAB,c:[F("c","Trade"),F("sk","Skilled","number"),F("us","Unskilled","number")]},
+ {t:"Equipment & machinery",k:"tb",id:"eq",pre:EQP,c:[F("e","Equipment"),F("q","Qty","number"),F("h","Working hours","number"),F("s","Status","sel",["Working","Idle","Breakdown"]),F("r","Remarks")]},
+ {t:"Material consumption",k:"tb",id:"mat",pre:MAT,c:[F("m","Material"),F("u","Unit"),F("r","Received"),F("k","Consumed"),F("b","Balance")]},
+ {t:"Quality control",k:"tb",id:"qc",pre:QC,c:[F("i","Inspection / test"),F("r","Result"),F("s","Status","sel",["Pass","Fail","Pending"]),F("m","Remarks")]},
+ {t:"Safety (HSE)",k:"kv",f:[F("tbt","Toolbox talk conducted","sel",["Yes","No"]),F("ppe","PPE compliance","sel",["Yes","No"]),F("nm","Near misses"),F("acc","Accidents / incidents"),F("obs","Safety observations"),F("ca","Corrective actions")]},
+ {t:"Delays / issues",k:"tb",id:"iss",c:[F("i","Issue"),F("im","Impact"),F("a","Action taken"),F("r","Responsible")]},
+ {t:"Tomorrow’s plan",k:"tb",id:"nx",c:[F("a","Activity"),F("t","Target quantity"),F("r","Responsible")]},
+ {t:"Photographs",k:"ph"}],
+Weekly:[...DETP,
+ {t:"Progress",k:"kv",f:[F("pl","Planned progress %","number"),F("ac","Actual progress %","number"),F("mh","Total man-hours this week","number")]},
+ A("init","Initiative taken by PMC",1),WORKS,SCHED,MAN,A("safety","Safety summary & incidents"),A("issues","Issues, delays & risks"),A("next","Plan for next week")],
+Monthly:[...DETP,
+ {t:"Progress & cost",k:"kv",f:[F("pl","Planned progress %","number"),F("ac","Actual progress %","number"),F("cv","Contract value"),F("bd","Billed to date")]},
+ A("init","Initiative taken by PMC",1),A("sum","Executive summary"),WORKS,
+ {t:"Schedule / milestones",k:"tb",id:"sched",req:1,c:[F("a","Milestone / activity"),F("s","Planned date","date"),F("e","Forecast date","date"),F("t","Status","sel",ST)]},MAN,
+ {t:"Billing & payments",k:"tb",id:"bill",c:[F("b","Bill / item"),F("a","Amount"),F("s","Status","sel",["Pending","Submitted","Certified","Paid"])]},
+ A("qual","Quality summary"),A("safety","Safety summary"),A("issues","Issues, claims & risks"),A("next","Plan for next month")],
+NCR:[...DET,
+ {t:"Non-conformance details",k:"kv",f:[F("loc","Location / element"),F("cont","Raised against (contractor)"),F("ref","Drawing / spec reference"),F("sev","Severity","sel",["Minor","Major","Critical"]),F("due","Corrective action deadline","date"),F("st","Status","sel",["Open","Closed"])]},
+ A("desc","Description of non-conformance",1),A("act","Corrective / preventive action required",1),A("rem","Remarks")]
+};
+const PJ=[F("project","Project name"),F("client","Client"),F("contractor","Contractor"),F("location","Location"),F("by","Prepared by (PMC engineer)"),F("start","Project start date","date"),F("deadline","Project deadline","date")];
+const $=s=>document.querySelector(s);
+let S={tab:"Daily",p:{},d:{},cur:{}};
+try{const x=localStorage.getItem("pmc-suite");if(x)S=Object.assign(S,JSON.parse(x))}catch(e){}
+const save=()=>{try{localStorage.setItem("pmc-suite",JSON.stringify(S))}catch(e){}};
+const esc=v=>String(v==null?"":v).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
+const D=()=>S.d[S.tab]||(S.d[S.tab]={});
+function inp(f,attr,v){
+ if(f[2]=="sel")return `<select ${attr}>${f[3].map(o=>`<option${o==(v||f[3][0])?" selected":""}>${o}</option>`).join("")}</select>`;
+ return `<input type="${f[2]}" value="${esc(v)}" ${attr}>`;
+}
+function fmt(d){if(!d)return"-";const x=new Date(d);return isNaN(x)?d:x.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}
+function left(){const d=S.p.deadline;if(!d)return null;const r=D().date||new Date().toISOString().slice(0,10);return Math.round((new Date(d)-new Date(r))/864e5)}
+function chip(){const n=left();$("#dl").textContent=n==null?"Days to deadline: – (set deadline)":"Days to deadline: "+n;}
+function render(){
+ $("#tabs").innerHTML=[...RPT,["History"]].map(r=>`<button data-tab="${r[0]}" class="${r[0]==S.tab?"on":""}">${r[0]}</button>`).join("");
+ $("#proj").innerHTML=`<section><h2>Project details (shared by all reports)</h2><div class="g">${PJ.map(f=>`<div class="${f[0]=="deadline"?"req":""}"><label>${f[1]}</label>${inp(f,`data-p="${f[0]}"`,S.p[f[0]])}</div>`).join("")}</div><div class="chip" id="dl"></div></section>`;
+ const d=D();
+ $("#form").innerHTML=CFG[S.tab].map(s=>{
+  if(s.k=="kv")return `<section><h2>${s.t}</h2><div class="g">${s.f.map(f=>`<div><label>${f[1]}</label>${inp(f,`data-f="${f[0]}"`,d[f[0]])}</div>`).join("")}</div></section>`;
+  if(s.k=="ph")return PHHTML(s);if(false)return `<section><h2>${s.t} (not saved after closing the page)</h2><div class="g">${PHS.map(([k,l])=>`<div><label>${l}</label><input type="file" accept="image/*" data-ph="${k}">${PH[k]?`<img src="${PH[k].url}" alt="${l}" style="width:100%;margin-top:6px;border-radius:6px">`:""}</div>`).join("")}</div></section>`;
+  if(s.k=="area")return `<section><div class="${s.req?"req":""}"><label style="font-size:14px;color:var(--ac);font-weight:600">${s.t}</label><textarea data-f="${s.id}">${esc(d[s.id])}</textarea></div></section>`;
+  const rows=d[s.id]||(d[s.id]=s.pre?s.pre.map(x=>({...x,_p:Object.keys(x)})):[{}]);
+  return `<section class="${s.req?"req":""}"><h2>${s.t}</h2><div class="rows">${rows.map((r,i)=>`<div class="row" style="grid-template-columns:2fr repeat(${s.c.length-1},1fr) auto">${s.c.map(c=>`<div><label>${c[1]}</label>${inp(c,`data-t="${s.id}" data-i="${i}" data-n="${c[0]}"`,r[c[0]])}</div>`).join("")}<button class="del" data-del="${s.id}" data-i="${i}" aria-label="Remove row">✕</button></div>`).join("")}</div><button class="add" data-add="${s.id}">+ Add row</button></section>`;
+ }).join("");
+ chip();
+}
+const OPEN={};
+function fold(){
+ document.querySelectorAll("#proj section,#form section").forEach(sec=>{
+  const h=sec.querySelector("h2")||sec.querySelector("label");if(!h)return;
+  const isProj=sec.parentNode.id=="proj",isArea=h.tagName=="LABEL";
+  const req=!isProj&&(sec.classList.contains("req")||(isArea&&sec.querySelector(".req")));
+  const t=h.textContent.replace(/ \(not saved.*$/,""),key=S.tab+"|"+t;
+  const def=isProj?!(S.p.project&&S.p.deadline):(req||t=="Report details");
+  const det=document.createElement("details"),sm=document.createElement("summary");
+  det.open=key in OPEN?OPEN[key]:def;
+  sm.textContent=t+(req?" *":"");
+  h.remove();
+  det.appendChild(sm);
+  while(sec.firstChild)det.appendChild(sec.firstChild);
+  sec.appendChild(det);
+  det.addEventListener("toggle",()=>{OPEN[key]=det.open});
+ });
+}
+let H=[];try{H=JSON.parse(localStorage.getItem("pmc-hist")||"[]")}catch(e){}
+const saveH=()=>{try{localStorage.setItem("pmc-hist",JSON.stringify(H));return true}catch(e){return false}};
+function saveRec(){
+ const id=S.cur[S.tab]||(S.cur[S.tab]=Date.now().toString(36));
+ const rec={id,author:USER||undefined,type:S.tab,ts:Date.now(),p:{...S.p},d:JSON.parse(JSON.stringify(D())),ph:S.tab=="Daily"?JSON.parse(JSON.stringify(PH)):[]};
+ const prev=H.find(x=>x.id==id);
+ if(!prev)logAct("created",rec);
+ else{const ks=Object.keys({...prev.d,...rec.d}).filter(k=>JSON.stringify((prev.d||{})[k])!==JSON.stringify(rec.d[k])).map(k=>lab(rec.type,k));if(JSON.stringify(prev.ph||[])!==JSON.stringify(rec.ph))ks.push("Photographs");if(JSON.stringify(prev.p)!==JSON.stringify(rec.p))ks.push("Project details");if(ks.length)logAct("edited",rec,"Changed: "+[...new Set(ks)].join(", "))}
+ cloud(rec);const old=H.slice(),i=H.findIndex(x=>x.id==id);
+ if(i>=0)H[i]=rec;else H.unshift(rec);
+ if(saveH()){save();return 1}
+ rec.ph=[];if(saveH()){save();return 2}
+ H=old;return 0}
+let started=false;
+function gate(s){const u=s&&s.user?s.user.email:null;if(started&&u===USER)return;started=true;USER=u;document.body.classList.toggle("locked",!u);$("#who").innerHTML=u?esc(u)+' · <button id="so" style="padding:3px 10px">Sign out</button>':"";if(u){loadH().then(()=>{if(S.tab=="History")renderHist()});render()}}
+async function loadH(){const r=await DB.from("reports").select("*").order("ts",{ascending:false});if(!r.error){H=r.data||[];saveH()}else{const m=$("#msg");m.style.color="var(--warn)";m.textContent="Database error: "+r.error.message}}
+function cloud(rec){if(!DB)return;DB.from("reports").upsert(rec).then(r=>{const m=$("#msg");m.style.color=r.error?"var(--warn)":"var(--mut)";m.textContent=r.error?"Database save failed: "+r.error.message:"Saved to database ✓"})}
+let LG=[];try{LG=JSON.parse(localStorage.getItem("pmc-log")||"[]")}catch(e){}
+function lab(t,k){for(const s of CFG[t]||[]){if(s.id==k)return s.t;if(s.f){const f=s.f.find(x=>x[0]==k);if(f)return f[1]}}return k}
+function logAct(action,rec,note){
+ const e={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),ts:Date.now(),action,rid:rec.id,type:rec.type,repno:(rec.d&&rec.d.repno)||"",project:(rec.p&&rec.p.project)||"",by_name:USER||S.p.by||"",note:note||""};
+ if(action=="deleted")e.snap={...rec,ph:[]};
+ LG.unshift(e);LG=LG.slice(0,2000);
+ try{localStorage.setItem("pmc-log",JSON.stringify(LG))}catch(x){}
+ if(DB)DB.from("report_logs").insert(e).then(r=>{if(r.error){const m=$("#msg");m.style.color="var(--warn)";m.textContent="Log save failed: "+r.error.message}})}
+async function loadLog(){const r=await DB.from("report_logs").select("*").order("ts",{ascending:false}).limit(500);if(!r.error){LG=r.data||[];try{localStorage.setItem("pmc-log",JSON.stringify(LG))}catch(x){}}}
+function renderLog(){
+ $("#tabs").innerHTML=[...RPT,["History"]].map(r=>'<button data-tab="'+r[0]+'" class="'+(r[0]==S.tab?"on":"")+'">'+r[0]+'</button>').join("");
+ $("#proj").innerHTML="";
+ const ic={created:"🟢 Created",edited:"🟡 Edited",deleted:"🔴 Deleted",restored:"🔵 Restored"};
+ $("#form").innerHTML='<section><div class="rows">'+(LG.map(e=>'<div class="row" style="display:flex;flex-wrap:wrap;align-items:center"><div style="flex:1 1 220px"><b>'+(ic[e.action]||e.action)+'</b> · '+esc(e.type)+' '+esc(e.repno)+'<br><span style="color:var(--mut);font-size:13px">'+esc(e.project||"No project")+' · by '+esc(e.by_name||"unknown")+' · '+new Date(e.ts).toLocaleString("en-GB")+(e.note?'<br>'+esc(e.note):'')+'</span></div>'+(e.action=="deleted"&&e.snap&&!H.some(x=>x.id==e.rid)?'<button data-restore="'+e.id+'">Restore</button>':'')+'</div>').join("")||'<p style="color:var(--mut)">No activity yet. Creating, editing and deleting reports will be recorded here.</p>')+'</div></section>';
+}
+const _rh=renderHist;
+renderHist=function(){
+ if(S.hv=="l")renderLog();else _rh();
+ const st=on=>on?"background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600;":"";
+ $("#form").insertAdjacentHTML("afterbegin",'<div style="display:flex;gap:6px;margin-bottom:10px"><button data-hv="r" style="flex:1;'+st(S.hv!="l")+'">Reports</button><button data-hv="l" style="flex:1;'+st(S.hv=="l")+'">Activity log</button></div>');
+};
+function saveBlob(b,n){const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();a.remove()}
+function renderHist(){
+ $("#tabs").innerHTML=[...RPT,["History"]].map(r=>'<button data-tab="'+r[0]+'" class="'+(r[0]==S.tab?"on":"")+'">'+r[0]+'</button>').join("");
+ $("#proj").innerHTML="";
+ const q=(S.q||"").toLowerCase();
+ const L=H.filter(r=>!q||(r.type+" "+(r.p.project||"")+" "+(r.d.repno||"")+" "+(r.d.date||"")).toLowerCase().includes(q));
+ $("#form").innerHTML='<section><input id="hq" placeholder="Search project, report no., type…" value="'+esc(S.q||"")+'"><div class="rows" style="margin-top:10px">'+(L.map(r=>'<div class="row" style="display:flex;flex-wrap:wrap;align-items:center"><div style="flex:1 1 220px"><b>'+r.type+' '+esc(r.d.repno||"")+'</b><br><span style="color:var(--mut);font-size:13px">'+esc(r.p.project||"No project")+' · '+fmt(r.d.date)+(r.author?' · created by '+esc(r.author):'')+(r.edited_by&&r.edited_by!=r.author?' · last edit by '+esc(r.edited_by):'')+' · saved '+new Date(r.ts).toLocaleString("en-GB")+'</span></div><button data-open="'+r.id+'">Open</button><button data-copy="'+r.id+'">Copy</button><button class="del" data-rm="'+r.id+'">✕</button></div>').join("")||'<p style="color:var(--mut)">No saved reports yet. Fill a report and tap Save or Generate PDF.</p>')+'</div></section><section><h2>Backup</h2><p style="color:var(--mut);font-size:13px;margin-top:0">Reports are saved in this browser only. Export a backup to keep them safe or move them to another device.</p><button id="ex">Export backup</button> <label style="margin-top:10px">Import backup file</label><input type="file" id="im" accept=".json"></section>';
+}
+const _r=render;render=function(){$(".bar").style.display=S.tab=="History"?"none":"flex";if(S.tab=="History"){renderHist();if(DB)Promise.all([loadH(),loadLog()]).then(()=>{if(S.tab=="History")renderHist()});return}_r();fold()};
+document.addEventListener("input",e=>{if(e.target.dataset.pn!==undefined)PH[+e.target.dataset.pn].n=e.target.value;if(e.target.id=="hq"){S.q=e.target.value;renderHist();const h=$("#hq");h.focus();h.setSelectionRange(1e3,1e3)}});
+document.addEventListener("click",e=>{
+ const t=e.target,a=t.dataset;
+ if(a.open||a.copy){const r=H.find(x=>x.id==(a.open||a.copy));if(!r)return;S.tab=r.type;S.p={...r.p};S.d[r.type]=JSON.parse(JSON.stringify(r.d));PH=ph2(r.ph);if(a.copy){S.cur[r.type]=null;delete S.d[r.type].repno}else S.cur[r.type]=r.id;save();render()}
+ if(a.rm&&confirm("Delete this saved report?")){const r0=H.find(x=>x.id==a.rm);if(r0)logAct("deleted",r0);if(DB)DB.from("reports").delete().eq("id",a.rm).then(r=>{if(r.error)alert("Could not delete: "+r.error.message)});H=H.filter(x=>x.id!=a.rm);saveH();renderHist()}
+ if(a.padd){PH.push({n:""});render()}
+ if(a.pdel!==undefined){PH.splice(+a.pdel,1);if(!PH.length)PH.push({n:""});render()}
+ 
+ if(t.id=="so"&&DB){DB.auth.signOut();try{["pmc-hist","pmc-log","pmc-suite"].forEach(k=>localStorage.removeItem(k))}catch(err){}H=[];LG=[];S={tab:"Daily",p:{},d:{},cur:{}};PH=[{n:""}]}
+ if(a.hv){S.hv=a.hv;save();renderHist()}
+ if(a.restore){const e=LG.find(x=>x.id==a.restore);if(e&&e.snap&&!H.some(x=>x.id==e.rid)){H.unshift(e.snap);saveH();cloud(e.snap);logAct("restored",e.snap,"Restored (photos are not restored)")}renderHist()}
+ if(t.id=="ex")saveBlob(new Blob([JSON.stringify(H)],{type:"application/json"}),"pmc-reports-backup.json");
+});
+document.addEventListener("change",e=>{if(e.target.id!="im"||!e.target.files[0])return;const fr=new FileReader();fr.onload=()=>{try{JSON.parse(fr.result).forEach(r=>{if(r&&r.id&&!H.some(x=>x.id==r.id))H.push(r)});H.sort((a,b)=>b.ts-a.ts);saveH();renderHist()}catch(err){alert("Invalid backup file")}};fr.readAsText(e.target.files[0])});
+document.addEventListener("input",e=>{
+ const t=e.target,a=t.dataset;
+ if(a.p!==undefined){S.p[a.p]=t.value;chip()}
+ else if(a.f!==undefined){D()[a.f]=t.value;if(a.f=="date")chip()}
+ else if(a.t){D()[a.t][+a.i][a.n]=t.value}
+ save();
+});
+document.addEventListener("click",e=>{
+ const a=e.target.dataset;
+ if(a.tab){S.tab=a.tab;$("#msg").textContent="";save();render()}
+ if(a.add){D()[a.add].push({});save();render()}
+ if(a.del){const r=D()[a.del];r.splice(+a.i,1);if(!r.length)r.push({});save();render()}
+});
+$("#clr").onclick=()=>{if(confirm("Clear this "+S.tab+" report? (Project details stay.)")){S.d[S.tab]={};S.cur[S.tab]=null;PH=[{n:""}];save();render()}};
+
+document.addEventListener("change",e=>{const k=e.target.dataset.ph,ix=+e.target.dataset.i,f=e.target.files&&e.target.files[0];if(!k||!f)return;const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=()=>{const s=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext("2d").drawImage(im,0,0,c.width,c.height);PH[ix][k]={url:c.toDataURL("image/jpeg",.7),w:c.width,h:c.height};render()};im.src=fr.result};fr.readAsDataURL(f)});
+function missing(){
+ const m=[],d=D();
+ if(!S.p.deadline)m.push("Project deadline");
+ CFG[S.tab].forEach(s=>{
+  if(s.k=="area"&&s.req&&!(d[s.id]||"").trim())m.push(s.t);
+  if(s.k=="tb"&&s.req&&!(d[s.id]||[]).some(r=>(r[s.c[0][0]]||"").trim()))m.push(s.t);
+ });
+ return m;
+}
+async function gen(){
+ const msg=$("#msg");msg.style.color="var(--warn)";msg.textContent="";
+ const m=missing();
+ if(m.length){msg.textContent="Please fill: "+m.join(", ");return}
+ if(!window.jspdf){msg.textContent="PDF library failed to load. Check connection and reload.";return}
+ saveRec();
+ const R=RPT.find(r=>r[0]==S.tab),d=D(),p=S.p,W=210,{jsPDF}=window.jspdf,doc=new jsPDF({unit:"mm",format:"a4"}),ac=[194,65,12];
+ doc.setFillColor(...ac);doc.rect(0,0,W,24,"F");doc.setTextColor(255);
+ doc.setFont("helvetica","bold");doc.setFontSize(16);doc.text(R[1].toUpperCase(),14,11);
+ doc.setFont("helvetica","normal");doc.setFontSize(10);doc.text(p.project||"Project",14,19);
+ doc.text("Report No: "+(d.repno||"-"),W-14,11,{align:"right"});doc.text("Date: "+fmt(d.date),W-14,19,{align:"right"});
+ doc.setTextColor(0);
+ const hd=t=>({content:t,styles:{fillColor:[240,240,240],fontStyle:"bold",cellWidth:34}});
+ const n=left(),per=d.from?fmt(d.from)+" to "+fmt(d.to):null;
+ const body=[[hd("Client"),p.client||"-",hd("Contractor"),p.contractor||"-"],[hd("Location"),p.location||"-",hd("Prepared by"),p.by||"-"],[hd("Start date"),fmt(p.start),hd("DEADLINE"),{content:fmt(p.deadline)+(n!=null?`  (${n} days left)`:""),styles:{fontStyle:"bold",textColor:[180,30,30]}}]];
+ if(per)body.push([hd("Period"),{content:per,colSpan:3}]);
+ if(S.tab=="Daily")body.push([hd("Weather"),(d.w||"Sunny")+(d.temp?", "+d.temp+" °C":""),hd("Work lost (hrs)"),d.wl||"-"]);
+ doc.autoTable({startY:30,theme:"grid",styles:{fontSize:9,cellPadding:2},body});
+ let y,num=0;
+ const title=t=>{y=doc.lastAutoTable.finalY+6;if(y>262){doc.addPage();y=16}num++;doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(...ac);doc.text(num+". "+t,14,y);doc.setTextColor(0);return y+2};
+ const base={theme:"grid",styles:{fontSize:9,cellPadding:2},headStyles:{fillColor:ac}};
+ CFG[S.tab].forEach(s=>{
+  if(s.t=="Report details")return;
+  if(s.k=="ph"){PDFPH(s,doc,title);return}if(false){const ps=PHS.filter(x=>PH[x[0]]);if(!ps.length)return;if(doc.lastAutoTable.finalY+62>285){doc.addPage();doc.lastAutoTable.finalY=10}const y0=title(s.t),bw=58,bh=44;ps.forEach((x,i)=>{const im=PH[x[0]],sc=Math.min(bw/im.w,bh/im.h),w=im.w*sc,h=im.h*sc,xx=14+PHS.indexOf(x)*62;doc.addImage(im.url,"JPEG",xx+(bw-w)/2,y0+1+(bh-h)/2,w,h);doc.setFontSize(8);doc.setTextColor(90);doc.text(x[1],xx+bw/2,y0+bh+5,{align:"center"});doc.setTextColor(0)});doc.lastAutoTable.finalY=y0+bh+4;return}
+  if(s.k=="area"){if(!(d[s.id]||"").trim())return;doc.autoTable({...base,startY:title(s.t),body:[[d[s.id]]]});return}
+  if(s.k=="kv"){
+   const f=s.f.filter(x=>d[x[0]]||x[2]=="sel");if(!f.length)return;
+   const b=[];for(let i=0;i<f.length;i+=2){const r=[];[f[i],f[i+1]].forEach(x=>{if(x){r.push(hd(x[1]));r.push(x[2]=="date"?fmt(d[x[0]]):(d[x[0]]||(x[2]=="sel"?x[3][0]:"")))}else r.push("","")});b.push(r)}
+   doc.autoTable({...base,startY:title(s.t),body:b});return}
+  const rows=(d[s.id]||[]).filter(r=>s.c.some(c=>(r[c[0]]||"").trim()&&!(r._p||[]).includes(c[0])));
+  if(!rows.length)return;
+  const rt=r=>s.c.filter(c=>c[2]=="number").reduce((a,c)=>a+(+r[c[0]]||0),0);
+  const b=rows.map((r,i)=>[i+1,...s.c.map(c=>c[2]=="date"?fmt(r[c[0]]):(r[c[0]]||(c[2]=="sel"?c[3][0]:"-"))),...(s.calc?[rt(r)]:[])]);
+  if(s.tot){const t=[{content:"TOTAL",colSpan:2,styles:{fontStyle:"bold"}}];s.c.slice(1).forEach(c=>t.push(c[2]=="number"?{content:String(rows.reduce((a,r)=>a+(+r[c[0]]||0),0)),styles:{fontStyle:"bold"}}:""));if(s.calc)t.push({content:String(rows.reduce((a,r)=>a+rt(r),0)),styles:{fontStyle:"bold"}});b.push(t)}
+  doc.autoTable({...base,startY:title(s.t),head:[["#",...s.c.map(c=>c[1]),...(s.calc?["Total"]:[])]],body:b,columnStyles:{0:{cellWidth:10}}});
+ });
+ y=doc.lastAutoTable.finalY+22;if(y>272){doc.addPage();y=40}
+ doc.setFontSize(9);doc.setFont("helvetica","normal");[0,1,2].forEach(i=>doc.line(14+i*62,y,66+i*62,y));
+ ["Site Engineer","Project Manager","Client / Consultant"].forEach((t,i)=>{doc.text(t,14+i*62,y+5);doc.text("(Sign & date)",14+i*62,y+9)});
+ const pg=doc.getNumberOfPages();
+ for(let i=1;i<=pg;i++){doc.setPage(i);doc.setFontSize(8);doc.setTextColor(120);doc.text(`${p.project||"Report"}  |  ${R[1]}  |  Page ${i} of ${pg}`,W/2,291,{align:"center"})}
+ const name=(R[2]+"_"+(d.repno||"")+"_"+(p.project||"Project")).replace(/[^\w\-]+/g,"_")+".pdf";
+ try{
+  const dl=window.claude?await claude.use("downloads"):null;
+  if(!dl){const a=document.createElement("a");a.href=URL.createObjectURL(doc.output("blob"));a.download=name;document.body.appendChild(a);a.click();a.remove();msg.style.color="var(--mut)";msg.textContent="PDF downloaded ✓";return}
+  await dl.save({filename:name,data:doc.output("blob")});
+  msg.style.color="var(--mut)";msg.textContent="PDF ready ✓";
+ }catch(err){msg.textContent=err&&err.code=="declined"?"Download cancelled.":"Could not save PDF ("+((err&&err.code)||"error")+").";}
+}
+$("#gen").onclick=gen;
+$("#sv").onclick=()=>{const m=$("#msg"),r=saveRec();m.style.color=r?"var(--mut)":"var(--warn)";m.textContent=r==1?"Saved to History ✓":r==2?"Saved without photos (browser storage nearly full).":"Storage full. Delete old reports or export a backup."};
+function unlock(){document.body.classList.remove("locked");$("#who").innerHTML=(DB?"Database connected":"Offline mode: saved on this device only"+(window.DBERR?" (database settings error: "+window.DBERR+")":""));render();if(DB)loadH().then(()=>{if(S.tab=="History")renderHist()})}
+
+
+
+
+$("#li").onclick=async()=>{if(!DB)return;$("#lm").textContent="";const r=await DB.auth.signInWithPassword({email:$("#le").value.trim(),password:$("#lp").value});if(r.error)$("#lm").textContent="Wrong email or password"};
+$("#lp").addEventListener("keydown",e=>{if(e.key=="Enter")$("#li").click()});
+if(!DB)unlock();
+else{DB.auth.getSession().then(r=>gate(r.data.session));DB.auth.onAuthStateChange((_e,s)=>gate(s))}
+
+</script>
+</body>
+</html>
