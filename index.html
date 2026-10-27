@@ -34,16 +34,19 @@ button{font:inherit;cursor:pointer;border-radius:7px;border:1px solid var(--bd);
 .go{background:var(--ac);color:var(--acx);border:0;font-weight:600;padding:11px 22px;flex:1;max-width:360px}
 .note{font-size:13px;color:var(--warn);min-height:18px}
 .chip{display:inline-block;background:var(--bg);border:1px solid var(--bd);border-radius:20px;padding:2px 10px;font-size:13px;margin-top:8px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:20px;padding:8px 16px;font-size:14px;z-index:30;display:none;max-width:92%;text-align:center}
 #lock{display:none;position:fixed;inset:0;background:var(--bg);align-items:center;justify-content:center;z-index:20;padding:20px}.locked #lock{display:flex}.locked .wrap,.locked .bar{display:none!important}.lk{width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px}
 summary{cursor:pointer;font-weight:600;color:var(--ac);font-size:14px}details[open]>summary{margin-bottom:9px}
 </style>
 </head>
 <body class="locked">
 <div id="lock"><div class="lk"><h1>PMC Report Generator</h1><p style="margin:0;color:var(--mut)">Sign in to continue</p><input id="le" type="email" placeholder="Email" autocomplete="username"><input id="lp" type="password" placeholder="Password" autocomplete="current-password"><button class="go" id="li" style="max-width:none;flex:none">Sign in</button><div class="note" id="lm"></div></div></div>
+<div id="toast"></div>
 <div class="wrap">
 <h1>PMC Report Generator</h1>
 <p style="margin:0 0 10px;color:var(--mut);font-size:13px">1. Pick a report · 2. Fill the open boxes (* = required) · 3. Tap Generate PDF</p>
-<div id="who" style="font-size:13px;color:var(--mut);margin-bottom:8px"></div>
+<div id="who" style="font-size:13px;color:var(--mut);margin-bottom:4px"></div>
+<div id="dbs" style="font-size:13px;margin-bottom:8px;color:var(--mut)">Database status: no save yet</div>
 <div class="tabs" id="tabs"></div>
 <div id="proj"></div>
 <div id="form"></div>
@@ -174,7 +177,7 @@ function saveRec(){
 let started=false;
 function gate(s){const u=s&&s.user?s.user.email:null;if(started&&u===USER)return;started=true;USER=u;document.body.classList.toggle("locked",!u);$("#who").innerHTML=u?esc(u)+' · <button id="so" style="padding:3px 10px">Sign out</button>':"";if(u){loadH().then(()=>{if(S.tab=="History")renderHist()});render()}}
 async function loadH(){const r=await DB.from("reports").select("*").order("ts",{ascending:false});if(!r.error){H=r.data||[];saveH()}else{const m=$("#msg");m.style.color="var(--warn)";m.textContent="Database error: "+r.error.message}}
-function cloud(rec){if(!DB)return;DB.from("reports").upsert(rec).then(r=>{const m=$("#msg");m.style.color=r.error?"var(--warn)":"var(--mut)";m.textContent=r.error?"Database save failed: "+r.error.message:"Saved to database ✓"})}
+function cloud(rec){if(!DB)return;DB.from("reports").upsert(rec).then(r=>{const m=$("#dbs");m.style.color=r.error?"var(--warn)":"var(--mut)";m.textContent=r.error?"⚠ Database save FAILED: "+r.error.message:"✓ Saved to database at "+new Date().toLocaleTimeString("en-GB");toast(m.textContent,!!r.error)})}
 let LG=[];try{LG=JSON.parse(localStorage.getItem("pmc-log")||"[]")}catch(e){}
 function lab(t,k){for(const s of CFG[t]||[]){if(s.id==k)return s.t;if(s.f){const f=s.f.find(x=>x[0]==k);if(f)return f[1]}}return k}
 function logAct(action,rec,note){
@@ -196,6 +199,7 @@ renderHist=function(){
  const st=on=>on?"background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600;":"";
  $("#form").insertAdjacentHTML("afterbegin",'<div style="display:flex;gap:6px;margin-bottom:10px"><button data-hv="r" style="flex:1;'+st(S.hv!="l")+'">Reports</button><button data-hv="l" style="flex:1;'+st(S.hv=="l")+'">Activity log</button></div>');
 };
+let _tt;function toast(t,bad){const e=$("#toast");e.textContent=t;e.style.color=bad?"var(--warn)":"var(--tx)";e.style.display="block";clearTimeout(_tt);_tt=setTimeout(()=>{e.style.display="none"},bad?9000:3500)}
 function saveBlob(b,n){const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();a.remove()}
 function renderHist(){
  $("#tabs").innerHTML=[...RPT,["History"]].map(r=>'<button data-tab="'+r[0]+'" class="'+(r[0]==S.tab?"on":"")+'">'+r[0]+'</button>').join("");
@@ -295,7 +299,7 @@ async function gen(){
 }
 $("#gen").onclick=gen;
 $("#sv").onclick=()=>{const m=$("#msg"),r=saveRec();m.style.color=r?"var(--mut)":"var(--warn)";m.textContent=r==1?"Saved to History ✓":r==2?"Saved without photos (browser storage nearly full).":"Storage full. Delete old reports or export a backup."};
-function unlock(){document.body.classList.remove("locked");$("#who").innerHTML=(DB?"Database connected":"Offline mode: saved on this device only"+(window.DBERR?" (database settings error: "+window.DBERR+")":""));render();if(DB)loadH().then(()=>{if(S.tab=="History")renderHist()})}
+function unlock(){document.body.classList.remove("locked");$("#who").innerHTML=($("#dbs").textContent=DB?"Database status: no save yet":"Database status: NOT connected (offline mode)",DB?"Database connected":"Offline mode: saved on this device only"+(window.DBERR?" (database settings error: "+window.DBERR+")":""));render();if(DB)loadH().then(()=>{if(S.tab=="History")renderHist()})}
 
 
 
