@@ -161,6 +161,7 @@ function fold(){
   det.addEventListener("toggle",()=>{OPEN[key]=det.open});
  });
 }
+if(!S.p.contractor||S.p.contractor=="Articates")S.p.contractor="Architect";
 let H=[];try{H=JSON.parse(localStorage.getItem("pmc-hist")||"[]")}catch(e){}
 const saveH=()=>{try{localStorage.setItem("pmc-hist",JSON.stringify(H));return true}catch(e){return false}};
 function saveRec(){
@@ -218,7 +219,7 @@ function extras(){
 }
 document.addEventListener("change",e=>{
  const a=e.target.dataset;
- if(a.pick!==undefined){const pr=projects()[e.target.value];S.p=pr?{...pr,by:S.p.by}:{by:S.p.by};save();render()}
+ if(a.pick!==undefined){const pr=projects()[e.target.value];S.p=pr?{...pr,by:S.p.by}:{by:S.p.by,contractor:"Architect"};save();render()}
  if(a.pf!==undefined){S.pf=e.target.value;renderHist()}
 });
 function incr(s){const m=String(s||"").match(/^(.*?)(\d+)\s*$/);return m?m[1]+String(+m[2]+1).padStart(m[2].length,"0"):""}
