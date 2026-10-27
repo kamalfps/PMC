@@ -195,20 +195,68 @@ function renderLog(){
 }
 const _rh=renderHist;
 renderHist=function(){
- if(S.hv=="l")renderLog();else _rh();
+ if(S.hv=="l")renderLog();else{_rh();const nm=Object.keys(projects());$("#form").insertAdjacentHTML("afterbegin",'<select data-pf="1" style="margin-bottom:10px"><option value="">All projects</option>'+nm.map(n=>'<option'+(n==S.pf?" selected":"")+'>'+esc(n)+'</option>').join("")+'</select>')}
  const st=on=>on?"background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600;":"";
  $("#form").insertAdjacentHTML("afterbegin",'<div style="display:flex;gap:6px;margin-bottom:10px"><button data-hv="r" style="flex:1;'+st(S.hv!="l")+'">Reports</button><button data-hv="l" style="flex:1;'+st(S.hv=="l")+'">Activity log</button></div>');
 };
 let _tt;function toast(t,bad){const e=$("#toast");e.textContent=t;e.style.color=bad?"var(--warn)":"var(--tx)";e.style.display="block";clearTimeout(_tt);_tt=setTimeout(()=>{e.style.display="none"},bad?9000:3500)}
+const clone=x=>JSON.parse(JSON.stringify(x));
+function projects(){const m={};[...H].sort((a,b)=>(a.ts||0)-(b.ts||0)).forEach(r=>{const n=((r.p&&r.p.project)||"").trim();if(n){const o={...r.p};delete o.by;m[n]=o}});return m}
+const POOLS={act:["works.a","works.d","sched.a","nx.a"],trade:["man.c"],equip:["eq.e"],mat:["mat.m"],cont:["P.contractor"],cli:["P.client"],loc:["P.location"]};
+function pool(name){const c={};H.forEach(r=>POOLS[name].forEach(k=>{const [t,f]=k.split(".");if(t=="P"){const v=(((r.p||{})[f])||"").trim();if(v)c[v]=(c[v]||0)+1}else((r.d||{})[t]||[]).forEach(row=>{const v=(row[f]||"").trim();if(v)c[v]=(c[v]||0)+1})}));return Object.keys(c).sort((a,b)=>c[b]-c[a]).slice(0,60)}
+function extras(){
+ const map={"works.a":"act","works.d":"act","sched.a":"act","nx.a":"act","man.c":"trade","eq.e":"equip","mat.m":"mat"},pmap={contractor:"cont",client:"cli",location:"loc"},used=new Set();
+ document.querySelectorAll("#form input[data-t]").forEach(i=>{const n=map[i.dataset.t+"."+i.dataset.n];if(n){i.setAttribute("list","dl-"+n);used.add(n)}});
+ document.querySelectorAll("#proj input[data-p]").forEach(i=>{const n=pmap[i.dataset.p];if(n){i.setAttribute("list","dl-"+n);used.add(n)}});
+ let box=$("#dls");if(!box){box=document.createElement("div");box.id="dls";document.body.appendChild(box)}
+ box.innerHTML=[...used].map(n=>'<datalist id="dl-'+n+'">'+pool(n).map(v=>'<option value="'+esc(v)+'">').join("")+'</datalist>').join("");
+ const g=$("#proj .g"),names=Object.keys(projects());
+ if(g)g.insertAdjacentHTML("beforebegin",'<div class="g" style="margin-bottom:9px"><div><label>Select existing project</label><select data-pick="1"><option value="">\u2014 New project \u2014</option>'+names.map(n=>'<option'+(n==S.p.project?" selected":"")+'>'+esc(n)+'</option>').join("")+'</select></div></div>');
+ const bt=(a,t)=>'<button class="add" data-act="'+a+'" style="width:100%;margin:0 0 10px">'+t+'</button>';
+ if(S.tab=="Daily")$("#form").insertAdjacentHTML("afterbegin",bt("cp","\u29c9 Copy from last Daily report (same project)"));
+ if(S.tab=="Weekly"||S.tab=="Monthly")$("#form").insertAdjacentHTML("afterbegin",bt("bw","\u2699 Build from Daily reports (uses the period dates)"));
+}
+document.addEventListener("change",e=>{
+ const a=e.target.dataset;
+ if(a.pick!==undefined){const pr=projects()[e.target.value];S.p=pr?{...pr,by:S.p.by}:{by:S.p.by};save();render()}
+ if(a.pf!==undefined){S.pf=e.target.value;renderHist()}
+});
+function incr(s){const m=String(s||"").match(/^(.*?)(\d+)\s*$/);return m?m[1]+String(+m[2]+1).padStart(m[2].length,"0"):""}
+function copyPrev(){
+ const c=H.filter(r=>r.type=="Daily"&&(!S.p.project||(r.p.project||"")==S.p.project)&&r.id!=S.cur.Daily).sort((a,b)=>((b.d.date||"")+String(b.ts)).localeCompare((a.d.date||"")+String(a.ts)));
+ const pv=c[0];if(!pv){toast("No earlier Daily report found for this project",true);return}
+ if(!confirm("Replace this form with data copied from the last Daily report ("+(pv.d.repno||fmt(pv.d.date))+")?"))return;
+ const p=clone(pv.d),n={repno:incr(p.repno),date:new Date().toISOString().slice(0,10)};
+ n.works=(p.nx||[]).filter(r=>r.a).map(r=>({a:r.a,pq:r.t||""}));if(!n.works.length)n.works=[{}];
+ if(p.man)n.man=p.man;
+ if(p.eq)n.eq=p.eq.map(r=>({...r,r:""}));
+ if(p.mat)n.mat=p.mat.map(r=>({m:r.m,u:r.u,_p:r._p}));
+ if(p.qc)n.qc=p.qc.map(r=>({i:r.i,_p:r._p}));
+ S.d.Daily=n;S.cur.Daily=null;PH=[{n:""}];save();render();toast("Copied from the last Daily report. Update today\u2019s numbers.")}
+function buildWeekly(){
+ const d=D(),proj=(S.p.project||"").trim(),end=d.to||d.date||new Date().toISOString().slice(0,10),st=d.from||new Date(new Date(end)-6*864e5).toISOString().slice(0,10);
+ const ds=H.filter(r=>r.type=="Daily"&&(r.p.project||"").trim()==proj&&r.d.date&&r.d.date>=st&&r.d.date<=end).sort((a,b)=>a.d.date.localeCompare(b.d.date));
+ if(!ds.length){toast("No Daily reports found for this project from "+fmt(st)+" to "+fmt(end)+". Save your Daily reports first.",true);return}
+ if(!confirm("Fill this report from "+ds.length+" Daily report(s)? Works, manpower, safety, issues and next plan will be replaced."))return;
+ d.from=st;d.to=end;
+ const W={};ds.forEach(r=>(r.d.works||[]).forEach(w=>{const a=(w.a||"").trim();if(!a)return;const x=W[a.toLowerCase()]||(W[a.toLowerCase()]={d:a,q:"",p:0});if(w.eq)x.q=w.eq;if(w.p!==undefined&&w.p!==""&&+w.p>=x.p)x.p=+w.p}));
+ d.works=Object.values(W).map(x=>({d:x.d,q:x.q,p:x.p?String(x.p):"",s:x.p>=100?"Completed":x.p>0?"In progress":"Not started"}));if(!d.works.length)d.works=[{}];
+ const M={};ds.forEach(r=>(r.d.man||[]).forEach(m=>{const c=(m.c||"").trim(),t=(+m.sk||0)+(+m.us||0);if(!c||!t)return;const x=M[c]||(M[c]={s:0,mx:0});x.s+=t;x.mx=Math.max(x.mx,t)}));
+ d.man=Object.entries(M).map(([c,x])=>({c,pl:String(x.mx),pr:String(Math.round(x.s/ds.length)),r:"Average per report day; planned = peak day"}));if(!d.man.length)d.man=[{}];
+ const L=f=>ds.map(r=>{const t=f(r.d);return t?fmt(r.d.date)+": "+t:""}).filter(Boolean).join("\n");
+ d.issues=L(x=>(x.iss||[]).filter(i=>i.i).map(i=>i.i+(i.a?" (action: "+i.a+")":"")).join("; "));
+ d.safety=ds.length+" daily report(s). Toolbox talk held on "+ds.filter(r=>(r.d.tbt||"Yes")=="Yes").length+" day(s). PPE compliance OK on "+ds.filter(r=>(r.d.ppe||"Yes")=="Yes").length+" day(s)."+(L(x=>[x.acc&&"Incident: "+x.acc,x.nm&&"Near miss: "+x.nm].filter(Boolean).join("; "))?"\n"+L(x=>[x.acc&&"Incident: "+x.acc,x.nm&&"Near miss: "+x.nm].filter(Boolean).join("; ")):"");
+ const last=ds[ds.length-1].d;d.next=(last.nx||[]).filter(r=>r.a).map(r=>"- "+r.a+(r.t?" ("+r.t+")":"")).join("\n");
+ save();render();toast("Built from "+ds.length+" Daily report(s). Please review and add your initiative.")}
 function saveBlob(b,n){const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();a.remove()}
 function renderHist(){
  $("#tabs").innerHTML=[...RPT,["History"]].map(r=>'<button data-tab="'+r[0]+'" class="'+(r[0]==S.tab?"on":"")+'">'+r[0]+'</button>').join("");
  $("#proj").innerHTML="";
  const q=(S.q||"").toLowerCase();
- const L=H.filter(r=>!q||(r.type+" "+(r.p.project||"")+" "+(r.d.repno||"")+" "+(r.d.date||"")).toLowerCase().includes(q));
+ const L=H.filter(r=>(!S.pf||(r.p.project||"")==S.pf)&&(!q||(r.type+" "+(r.p.project||"")+" "+(r.d.repno||"")+" "+(r.d.date||"")).toLowerCase().includes(q)));
  $("#form").innerHTML='<section><input id="hq" placeholder="Search project, report no., type…" value="'+esc(S.q||"")+'"><div class="rows" style="margin-top:10px">'+(L.map(r=>'<div class="row" style="display:flex;flex-wrap:wrap;align-items:center"><div style="flex:1 1 220px"><b>'+r.type+' '+esc(r.d.repno||"")+'</b><br><span style="color:var(--mut);font-size:13px">'+esc(r.p.project||"No project")+' · '+fmt(r.d.date)+(r.author?' · created by '+esc(r.author):'')+(r.edited_by&&r.edited_by!=r.author?' · last edit by '+esc(r.edited_by):'')+' · saved '+new Date(r.ts).toLocaleString("en-GB")+'</span></div><button data-open="'+r.id+'">Open</button><button data-copy="'+r.id+'">Copy</button><button class="del" data-rm="'+r.id+'">✕</button></div>').join("")||'<p style="color:var(--mut)">No saved reports yet. Fill a report and tap Save or Generate PDF.</p>')+'</div></section><section><h2>Backup</h2><p style="color:var(--mut);font-size:13px;margin-top:0">Reports are saved in this browser only. Export a backup to keep them safe or move them to another device.</p><button id="ex">Export backup</button> <label style="margin-top:10px">Import backup file</label><input type="file" id="im" accept=".json"></section>';
 }
-const _r=render;render=function(){$(".bar").style.display=S.tab=="History"?"none":"flex";if(S.tab=="History"){renderHist();if(DB)Promise.all([loadH(),loadLog()]).then(()=>{if(S.tab=="History")renderHist()});return}_r();fold()};
+const _r=render;render=function(){$(".bar").style.display=S.tab=="History"?"none":"flex";if(S.tab=="History"){renderHist();if(DB)Promise.all([loadH(),loadLog()]).then(()=>{if(S.tab=="History")renderHist()});return}_r();fold();extras()};
 document.addEventListener("input",e=>{if(e.target.dataset.pn!==undefined)PH[+e.target.dataset.pn].n=e.target.value;if(e.target.id=="hq"){S.q=e.target.value;renderHist();const h=$("#hq");h.focus();h.setSelectionRange(1e3,1e3)}});
 document.addEventListener("click",e=>{
  const t=e.target,a=t.dataset;
@@ -218,6 +266,8 @@ document.addEventListener("click",e=>{
  if(a.pdel!==undefined){PH.splice(+a.pdel,1);if(!PH.length)PH.push({n:""});render()}
  
  if(t.id=="so"&&DB){DB.auth.signOut();try{["pmc-hist","pmc-log","pmc-suite"].forEach(k=>localStorage.removeItem(k))}catch(err){}H=[];LG=[];S={tab:"Daily",p:{},d:{},cur:{}};PH=[{n:""}]}
+ if(a.act=="cp")copyPrev();
+ if(a.act=="bw")buildWeekly();
  if(a.hv){S.hv=a.hv;save();renderHist()}
  if(a.restore){const e=LG.find(x=>x.id==a.restore);if(e&&e.snap&&!H.some(x=>x.id==e.rid)){H.unshift(e.snap);saveH();cloud(e.snap);logAct("restored",e.snap,"Restored (photos are not restored)")}renderHist()}
  if(t.id=="ex")saveBlob(new Blob([JSON.stringify(H)],{type:"application/json"}),"pmc-reports-backup.json");
