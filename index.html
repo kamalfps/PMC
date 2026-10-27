@@ -113,10 +113,10 @@ Monthly:[...DETP,
  {t:"Billing & payments",k:"tb",id:"bill",c:[F("b","Bill / item"),F("a","Amount"),F("s","Status","sel",["Pending","Submitted","Certified","Paid"])]},
  A("qual","Quality summary"),A("safety","Safety summary"),A("issues","Issues, claims & risks"),A("next","Plan for next month")],
 NCR:[...DET,
- {t:"Non-conformance details",k:"kv",f:[F("loc","Location / element"),F("cont","Raised against (contractor)"),F("ref","Drawing / spec reference"),F("sev","Severity","sel",["Minor","Major","Critical"]),F("due","Corrective action deadline","date"),F("st","Status","sel",["Open","Closed"])]},
+ {t:"Non-conformance details",k:"kv",f:[F("loc","Location / element"),F("cont","Raised against (architect)"),F("ref","Drawing / spec reference"),F("sev","Severity","sel",["Minor","Major","Critical"]),F("due","Corrective action deadline","date"),F("st","Status","sel",["Open","Closed"])]},
  A("desc","Description of non-conformance",1),A("act","Corrective / preventive action required",1),A("rem","Remarks")]
 };
-const PJ=[F("project","Project name"),F("client","Client"),F("contractor","Contractor"),F("location","Location"),F("by","Prepared by (PMC engineer)"),F("start","Project start date","date"),F("deadline","Project deadline","date")];
+const PJ=[F("project","Project name"),F("client","Client"),F("contractor","Architect"),F("location","Location"),F("by","Prepared by (PMC engineer)"),F("start","Project start date","date"),F("deadline","Project deadline","date")];
 const $=s=>document.querySelector(s);
 let S={tab:"Daily",p:{},d:{},cur:{}};
 try{const x=localStorage.getItem("pmc-suite");if(x)S=Object.assign(S,JSON.parse(x))}catch(e){}
@@ -161,7 +161,7 @@ function fold(){
   det.addEventListener("toggle",()=>{OPEN[key]=det.open});
  });
 }
-if(!S.p.contractor||S.p.contractor=="Articates")S.p.contractor="Architect";
+if(S.p.contractor=="Articates"||S.p.contractor=="Architect")S.p.contractor="";
 let H=[];try{H=JSON.parse(localStorage.getItem("pmc-hist")||"[]")}catch(e){}
 const saveH=()=>{try{localStorage.setItem("pmc-hist",JSON.stringify(H));return true}catch(e){return false}};
 function saveRec(){
@@ -219,7 +219,7 @@ function extras(){
 }
 document.addEventListener("change",e=>{
  const a=e.target.dataset;
- if(a.pick!==undefined){const pr=projects()[e.target.value];S.p=pr?{...pr,by:S.p.by}:{by:S.p.by,contractor:"Architect"};save();render()}
+ if(a.pick!==undefined){const pr=projects()[e.target.value];S.p=pr?{...pr,by:S.p.by}:{by:S.p.by};save();render()}
  if(a.pf!==undefined){S.pf=e.target.value;renderHist()}
 });
 function incr(s){const m=String(s||"").match(/^(.*?)(\d+)\s*$/);return m?m[1]+String(+m[2]+1).padStart(m[2].length,"0"):""}
@@ -313,7 +313,7 @@ async function gen(){
  doc.setTextColor(0);
  const hd=t=>({content:t,styles:{fillColor:[240,240,240],fontStyle:"bold",cellWidth:34}});
  const n=left(),per=d.from?fmt(d.from)+" to "+fmt(d.to):null;
- const body=[[hd("Client"),p.client||"-",hd("Contractor"),p.contractor||"-"],[hd("Location"),p.location||"-",hd("Prepared by"),p.by||"-"],[hd("Start date"),fmt(p.start),hd("DEADLINE"),{content:fmt(p.deadline)+(n!=null?`  (${n} days left)`:""),styles:{fontStyle:"bold",textColor:[180,30,30]}}]];
+ const body=[[hd("Client"),p.client||"-",hd("Architect"),p.contractor||"-"],[hd("Location"),p.location||"-",hd("Prepared by"),p.by||"-"],[hd("Start date"),fmt(p.start),hd("DEADLINE"),{content:fmt(p.deadline)+(n!=null?`  (${n} days left)`:""),styles:{fontStyle:"bold",textColor:[180,30,30]}}]];
  if(per)body.push([hd("Period"),{content:per,colSpan:3}]);
  if(S.tab=="Daily")body.push([hd("Weather"),(d.w||"Sunny")+(d.temp?", "+d.temp+" °C":""),hd("Work lost (hrs)"),d.wl||"-"]);
  doc.autoTable({startY:30,theme:"grid",styles:{fontSize:9,cellPadding:2},body});
