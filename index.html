@@ -34,6 +34,12 @@ button{font:inherit;cursor:pointer;border-radius:7px;border:1px solid var(--bd);
 .go{background:var(--ac);color:var(--acx);border:0;font-weight:600;padding:11px 22px;flex:1;max-width:360px}
 .note{font-size:13px;color:var(--warn);min-height:18px}
 .chip{display:inline-block;background:var(--bg);border:1px solid var(--bd);border-radius:20px;padding:2px 10px;font-size:13px;margin-top:8px}
+#thb{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));right:10px;z-index:25;width:38px;height:38px;padding:0;border-radius:50%;font-size:18px;line-height:1}
+#thp{position:fixed;top:calc(52px + env(safe-area-inset-top,0px));right:10px;z-index:25;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;display:none;width:230px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+#thp .dots{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+#thp .dots button{width:30px;height:30px;border-radius:50%;padding:0;border:2px solid transparent}
+#thp .dots button.sel{border-color:var(--tx)}
+#thp .md{display:flex;gap:6px}#thp .md button{flex:1;padding:6px 4px;font-size:13px}#thp .md button.sel{background:var(--ac);color:var(--acx);border-color:var(--ac)}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:20px;padding:8px 16px;font-size:14px;z-index:30;display:none;max-width:92%;text-align:center}
 #lock{display:none;position:fixed;inset:0;background:var(--bg);align-items:center;justify-content:center;z-index:20;padding:20px}.locked #lock{display:flex}.locked .wrap,.locked .bar{display:none!important}.lk{width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px}
 summary{cursor:pointer;font-weight:600;color:var(--ac);font-size:14px}details[open]>summary{margin-bottom:9px}
@@ -41,6 +47,8 @@ summary{cursor:pointer;font-weight:600;color:var(--ac);font-size:14px}details[op
 </head>
 <body class="locked">
 <div id="lock"><div class="lk"><h1>PMC Report Generator</h1><p style="margin:0;color:var(--mut)">Sign in to continue</p><input id="le" type="email" placeholder="Email" autocomplete="username"><input id="lp" type="password" placeholder="Password" autocomplete="current-password"><button class="go" id="li" style="max-width:none;flex:none">Sign in</button><div class="note" id="lm"></div></div></div>
+<button id="thb" aria-label="Change theme colour" title="Theme colour">🎨</button>
+<div id="thp"></div>
 <div id="toast"></div>
 <div class="wrap">
 <h1>PMC Report Generator</h1>
@@ -360,6 +368,28 @@ $("#lp").addEventListener("keydown",e=>{if(e.key=="Enter")$("#li").click()});
 if(!DB)unlock();
 else{DB.auth.getSession().then(r=>gate(r.data.session));DB.auth.onAuthStateChange((_e,s)=>gate(s))}
 
+
+(function(){
+ const T=[["Orange","#c2410c","#f97316"],["Blue","#1d4ed8","#60a5fa"],["Green","#15803d","#4ade80"],["Purple","#7e22ce","#c084fc"],["Teal","#0f766e","#2dd4bf"],["Red","#b91c1c","#f87171"],["Slate","#334155","#cbd5e1"]];
+ let st={c:0,m:"auto"};try{st=Object.assign(st,JSON.parse(localStorage.getItem("pmc-theme")||"{}"))}catch(e){}
+ const mq=window.matchMedia?window.matchMedia("(prefers-color-scheme: dark)"):{matches:false},R=document.documentElement,P=document.getElementById("thp");
+ function apply(){
+  if(st.m=="auto")R.removeAttribute("data-theme");else R.setAttribute("data-theme",st.m);
+  const dark=st.m=="dark"||(st.m=="auto"&&mq.matches),t=T[st.c]||T[0];
+  R.style.setProperty("--ac",dark?t[2]:t[1]);R.style.setProperty("--acx",dark?"#14161a":"#fff");
+  P.innerHTML='<div class="dots">'+T.map((x,i)=>'<button data-tc="'+i+'" title="'+x[0]+'" aria-label="'+x[0]+'" class="'+(i==st.c?"sel":"")+'" style="background:'+(dark?x[2]:x[1])+'"></button>').join("")+'</div><div class="md">'+[["auto","Auto"],["light","Light"],["dark","Dark"]].map(m=>'<button data-tm="'+m[0]+'" class="'+(st.m==m[0]?"sel":"")+'">'+m[1]+'</button>').join("")+'</div>';
+ }
+ document.getElementById("thb").addEventListener("click",()=>{P.style.display=P.style.display=="block"?"none":"block"});
+ document.addEventListener("click",e=>{
+  const t=e.target;
+  if(t.dataset&&t.dataset.tc!==undefined){st.c=+t.dataset.tc}
+  else if(t.dataset&&t.dataset.tm){st.m=t.dataset.tm}
+  else{if(!t.closest("#thp,#thb"))P.style.display="none";return}
+  try{localStorage.setItem("pmc-theme",JSON.stringify(st))}catch(x){}apply();
+ });
+ if(mq.addEventListener)mq.addEventListener("change",apply);
+ apply();
+})();
 </script>
 </body>
 </html>
